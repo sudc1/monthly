@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>월간업무보고 쉬운 작성 · 수원도시공사</title>
+<link rel="icon" type="image/png" href="img/suwon-mark.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand" id="homeBtn" title="처음 화면으로" role="button" tabindex="0"><img src="img/suwon-mark.png" alt="수원도시공사" width="36" height="35"><h1>월간업무보고 쉬운 작성</h1></div>
+  <span class="ctx" id="ctxText"></span>
+  <span class="grow"></span>
+  <span class="savestate" id="saveState" role="status">자동 저장됨</span>
+  <button type="button" class="btn sm hidden" id="btnDept" title="부서 바꾸기"></button>
+  <button type="button" class="btn sm" id="btnTour">둘러보기</button>
+  <button type="button" class="btn sm" id="btnSettings">설정</button>
+  <button type="button" class="btn sm hidden" id="btnHome">처음으로</button>
+</header>
+
+<main id="app"></main>
+
+<div class="navbar hidden" id="navbar"><div class="inner">
+  <button type="button" class="btn lg" id="btnPrev">이전</button>
+  <span class="grow lbl" id="navInfo"></span>
+  <button type="button" class="btn lg pri" id="btnNext">다음</button>
+</div></div>
+
+<dialog id="dlgEdit" style="max-width:min(1180px,96vw);width:min(1180px,96vw)">
+  <div class="dlg-h"><h2 id="edTitle">항목 고치기</h2><p id="edDesc"></p></div>
+  <div class="dlg-b" id="edBody"></div>
+  <div class="dlg-f" id="edFoot"></div>
+</dialog>
+
+<dialog id="dlgPick">
+  <div class="dlg-h"><h2 id="pkTitle"></h2><p id="pkDesc"></p></div>
+  <div class="dlg-b" id="pkBody"></div>
+  <div class="dlg-f" id="pkFoot"></div>
+</dialog>
+
+<dialog id="dlgConfirm" style="max-width:520px">
+  <div class="dlg-h"><h2 id="cfTitle"></h2><p id="cfText"></p></div>
+  <div class="dlg-f"><span class="grow"></span><button type="button" class="btn" id="cfNo">취소</button><button type="button" class="btn pri" id="cfYes">확인</button></div>
+</dialog>
+
+<datalist id="dlLabels"></datalist>
+<div id="dlValues"></div>
+<input type="file" id="fileInput" class="hidden">
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="js/vendor/jszip.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/template.js"></script>
+<script src="js/dist-data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
