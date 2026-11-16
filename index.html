@@ -275,6 +275,10 @@ header.top{flex-wrap:wrap;row-gap:6px}
 .brand h1{cursor:pointer}
 @media (max-width:640px){.brand img{height:30px}}
 
+.backbar{margin:0 0 12px}
+.backbar .btn{font-weight:700}
+#cfText{white-space:pre-line}
+
 </style>
 </head>
 <body>
@@ -881,6 +885,18 @@ var TPL = {"cover":"<hp:p id=\"2764991984\" paraPrIDRef=\"1\" styleIDRef=\"0\" p
     };
   }
   function saveSet() { saveKey(sK(), SET); buildDatalists(); }
+  /* 구형·가져온 보관함 항목에 id·파트가 없어도 고르기가 되도록 보정 */
+  function fixLib() {
+    LIB = (LIB || []).filter(function (u) { return u && typeof u === 'object'; });
+    var seen = {};
+    LIB.forEach(function (u, i) {
+      if (!u.id || seen[u.id]) u.id = 'lib' + i + '_' + MR.uid();
+      seen[u.id] = 1;
+      if (!Array.isArray(u.blocks)) u.blocks = [];
+      if (!u.title) u.title = '(제목 없음)';
+      if (!u.part) u.part = '';
+    });
+  }
   function saveLib() { saveKey(lK(), LIB); }
   function isDateLabel(t) { var n = norm(t); return !!n && SET.dateWords.some(function (w) { return w && n.indexOf(norm(w)) >= 0; }); }
   /* '장소'처럼 짧은 이름이면 '운영장소', '회의장소'의 자주 쓰는 값을 함께 보여 줌 */
@@ -909,8 +925,23 @@ var TPL = {"cover":"<hp:p id=\"2764991984\" paraPrIDRef=\"1\" styleIDRef=\"0\" p
 
   /* ---------- 파일 도우미 ---------- */
   function download(name, blob) {
-    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
-    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+    /* 형식 추정으로 확장자가 바뀌지 않도록 항상 일반 바이너리로 저장한다 */
+    var b = new Blob([blob], { type: 'application/octet-stream' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name;
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  }
+  /* 저장 위치·이름을 직접 고르는 저장창(지원 브라우저) → 확장자 유지. 미지원이면 일반 다운로드 */
+  function saveFile(name, blob, ext, desc) {
+    if (window.showSaveFilePicker && ext) {
+      var acc = {}; acc['application/octet-stream'] = [ext];
+      return window.showSaveFilePicker({ suggestedName: name, types: [{ description: desc || '파일', accept: acc }] }).then(function (fh) {
+        return fh.createWritable().then(function (w) { return w.write(blob).then(function () { return w.close(); }); });
+      }).then(function () { return 'picker'; }, function (e) {
+        if (e && e.name === 'AbortError') return 'cancel';
+        download(name, blob); return 'download';
+      });
+    }
+    download(name, blob); return Promise.resolve('download');
   }
   function pickFiles(accept, multiple, cb) {
     var fi = $('fileInput'); fi.value = ''; fi.accept = accept; fi.multiple = !!multiple;
@@ -1400,7 +1431,36 @@ var TPL = {"cover":"<hp:p id=\"2764991984\" paraPrIDRef=\"1\" styleIDRef=\"0\" p
     else if (UI.view === 'lead') renderLead(app);
     else if (UI.view === 'dept') renderDeptPick(app);
     else renderSettings(app);
+    addBackBar(app); syncHistory();
   }
+  /* 뒤로가기: 화면 위쪽 ‘← 이전’ 버튼 + 브라우저 뒤로가기(마우스 뒤로 버튼 포함) */
+  function backTarget() {
+    if (UI.view === 'staff') return UI.step > 1 ? { label: '← 이전 단계: ' + STEP_NAMES[UI.step - 2], go: function () { goStep(UI.step - 1); } } : { label: '← 처음 화면', go: function () { saveStaffNow(); UI.view = 'start'; render(); window.scrollTo(0, 0); } };
+    if (UI.view === 'lead') return { label: '← 처음 화면', go: function () { saveLeadNow(); UI.view = 'start'; render(); window.scrollTo(0, 0); } };
+    if (UI.view === 'set') return { label: '← 돌아가기', go: function () { UI.view = UI.settingsFrom || 'start'; render(); window.scrollTo(0, 0); } };
+    if (UI.view === 'dept' && DEPTCFG.cur) return { label: '← 처음 화면', go: function () { UI.view = 'start'; render(); window.scrollTo(0, 0); } };
+    return null;
+  }
+  function addBackBar(app) {
+    var t = backTarget(); if (!t) return;
+    var bar = h('div', { class: 'backbar' }, h('button', { type: 'button', class: 'btn', id: 'btnBack', text: t.label, onclick: t.go }));
+    app.insertBefore(bar, app.firstChild);
+  }
+  var HIST_LAST = null, FROM_POP = false;
+  function syncHistory() {
+    var key = UI.view + ':' + (UI.view === 'staff' ? UI.step : '');
+    if (HIST_LAST === null) { try { history.replaceState({ v: UI.view, s: UI.step }, ''); } catch (e) {} }
+    else if (key !== HIST_LAST && !FROM_POP) { try { history.pushState({ v: UI.view, s: UI.step }, ''); } catch (e) {} }
+    HIST_LAST = key; FROM_POP = false;
+  }
+  window.addEventListener('popstate', function (e) {
+    var d = document.querySelector('dialog[open]'); if (d) d.close();
+    var st = e.state; if (!st) st = { v: 'start', s: 1 };
+    if (st.v === 'staff' && !(S && S.part)) st = { v: 'start', s: 1 };
+    if (st.v === 'lead' && !L) st = { v: 'start', s: 1 };
+    saveStaffNow(); saveLeadNow();
+    UI.view = st.v; UI.step = st.s || 1; FROM_POP = true; render(); window.scrollTo(0, 0);
+  });
 
   /* ---------- 시작 화면 ---------- */
   function deptList() { return DEPTS_DEFAULT.concat(DEPTCFG.custom.filter(function (d) { return DEPTS_DEFAULT.indexOf(d) < 0; })); }
@@ -1438,6 +1498,7 @@ var TPL = {"cover":"<hp:p id=\"2764991984\" paraPrIDRef=\"1\" styleIDRef=\"0\" p
     SET = loadKey(sK(), null);
     if (!SET || !SET.parts || !SET.fields || !SET.dateWords) SET = (EMBED && EMBED.settings) ? MR.clone(EMBED.settings) : defaultSettings();
     LIB = loadKey(lK(), []); if (!Array.isArray(LIB)) LIB = [];
+    fixLib();
     if (EMBED && Array.isArray(EMBED.library)) {
       var added = 0;
       EMBED.library.forEach(function (u) { if (!LIB.some(function (x) { return norm(x.title) === norm(u.title); })) { LIB.push(u); added++; } });
@@ -1874,19 +1935,22 @@ var TPL = {"cover":"<hp:p id=\"2764991984\" paraPrIDRef=\"1\" styleIDRef=\"0\" p
     $('dlgPick').showModal();
   }
   function pickFromLib(st, sec) {
-    var part = UI.view === 'lead' ? null : st.part, all = !part, pick = {};
+    fixLib();
+    var part = UI.view === 'lead' ? null : st.part, pick = {};
+    var all = !part || !LIB.some(function (u) { return u.part === part; });
     var draw = function () {
       $('pkTitle').textContent = '자주 쓰는 업무에서 가져오기';
       $('pkDesc').textContent = '매달 반복하는 업무를 골라 넣습니다. 편집 화면의 ‘자주 쓰는 업무로 저장’을 누르면 여기에 쌓입니다.';
       var b = $('pkBody'); b.innerHTML = '';
       if (part) b.appendChild(h('label', { class: 'lbl', style: 'display:flex;gap:6px;align-items:center' }, h('input', { type: 'checkbox', checked: all, onchange: function () { all = this.checked; draw(); } }), '다른 파트 업무도 보기'));
       var list = LIB.filter(function (u) { return all || u.part === part; });
+      var other = LIB.length - list.length;
       if (!list.length) b.appendChild(h('div', { class: 'empty', text: '저장된 업무가 없습니다. 항목을 쓴 뒤 편집 화면 아래 ‘자주 쓰는 업무로 저장’을 누르면 다음 달부터 여기서 고를 수 있습니다.' }));
-      list.forEach(function (u) {
-        var id = 'lb' + u.id;
+      list.forEach(function (u, idx) {
+        var id = 'lb' + idx + '_' + String(u.id).replace(/[^\w-]/g, '_');
         b.appendChild(h('label', { class: 'pick', for: id },
           h('input', { type: 'checkbox', id: id, checked: !!pick[u.id], onchange: function () { if (this.checked) pick[u.id] = u; else delete pick[u.id]; upd(); } }),
-          h('span', { class: 'pt', text: u.title }), h('span', { class: 'chip part', text: u.part }), h('span', { class: 'lbl', text: u.savedAt || '' })));
+          h('span', { class: 'pt', text: u.title }), h('span', { class: 'chip part', text: u.part || '파트 없음' }), h('span', { class: 'lbl', text: u.savedAt || '' })));
       });
       var f = $('pkFoot'); f.innerHTML = '';
       var go = h('button', { type: 'button', class: 'btn pri', onclick: function () {
@@ -2225,12 +2289,22 @@ var TPL = {"cover":"<hp:p id=\"2764991984\" paraPrIDRef=\"1\" styleIDRef=\"0\" p
         z.file('mimetype', 'application/hwp+zip', { compression: 'STORE' });
         return z.generateAsync({ type: 'blob', compression: 'DEFLATE', mimeType: 'application/hwp+zip' });
       }).then(function (blob) {
-        download(L.year + '년 ' + L.month + '월 월간업무보고(' + DEPT + ').hwpx', blob);
-        addHistory({ y: L.year, m: L.month, items: st.items.map(plainCopy) });
-        L.exportedAt = new Date().toISOString(); saveLead();
-        toast('HWPX를 만들었습니다. 이 PC의 과거 보고서에도 보관했습니다. 다음은 ‘다음 달 배포판 만들기’');
+        var fname = L.year + '년 ' + L.month + '월 월간업무보고(' + DEPT + ').hwpx';
+        return saveFile(fname, blob, '.hwpx', '한글 문서(HWPX)').then(function (how) {
+          if (how === 'cancel') { toast('저장을 취소했습니다'); return; }
+          addHistory({ y: L.year, m: L.month, items: st.items.map(plainCopy) });
+          L.exportedAt = new Date().toISOString(); saveLead();
+          saveResultBox(fname, blob, how);
+        });
       });
     }).catch(function (err) { toast('만들기 실패: ' + err.message); });
+  }
+  function saveResultBox(fname, blob, how) {
+    var d = $('dlgConfirm');
+    confirmBox('HWPX 저장', (how === 'picker' ? '선택한 위치에 저장했습니다.' : '내려받기를 시작했습니다. 브라우저의 다운로드 폴더를 확인하세요.') +
+      '\n파일 이름: ' + fname + '\n확장자가 .hwpx가 아니면 파일 이름 끝을 .hwpx로 고쳐 주세요. 다음은 ‘다음 달 배포판 만들기’입니다.', '다시 저장', '닫기').then(function (again) {
+      if (again) saveFile(fname, blob, '.hwpx', '한글 문서(HWPX)').then(function (h2) { if (h2 !== 'cancel') saveResultBox(fname, blob, h2); });
+    });
   }
   function makeDist() {
     var st = sanitized(L);
